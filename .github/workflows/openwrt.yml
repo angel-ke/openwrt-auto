@@ -1,4 +1,4 @@
-name: Build OpenWrt (Official)
+name: Build OpenWrt (x86 NAS Optimized)
 
 on:
   workflow_dispatch:
@@ -8,20 +8,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 拉取源码
+    - name: 1. 拉取官方源码
       run: |
         git clone https://github.com/openwrt/openwrt.git
         cd openwrt
 
-    - name: 更新软件源
+    - name: 2. 更新软件源
       run: |
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: 写入配置（关键）
+    - name: 3. 写入配置（NAS专用）
       run: |
         cd openwrt
+
+        # 架构
         echo "CONFIG_TARGET_x86=y" >> .config
         echo "CONFIG_TARGET_x86_64=y" >> .config
 
@@ -32,27 +34,41 @@ jobs:
         echo "CONFIG_PACKAGE_kmod-tun=y" >> .config
         echo "CONFIG_PACKAGE_ipset=y" >> .config
 
-        # AdGuard
+        # DNS + 去广告
         echo "CONFIG_PACKAGE_luci-app-adguardhome=y" >> .config
 
         # 家长控制
         echo "CONFIG_PACKAGE_luci-app-access-control=y" >> .config
 
-        # SQM
+        # 流控（防卡）
         echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
 
         # 流量监控
         echo "CONFIG_PACKAGE_luci-app-nlbwmon=y" >> .config
 
+        # 入侵检测
+        echo "CONFIG_PACKAGE_suricata=y" >> .config
+
+        # 网络优化
+        echo "CONFIG_PACKAGE_luci-app-flowoffload=y" >> .config
+
+        # IPv6
+        echo "CONFIG_PACKAGE_ipv6helper=y" >> .config
+
         make defconfig
 
-    - name: 编译（耐心等）
+    - name: 4. 开始编译（时间较长）
       run: |
         cd openwrt
         make -j$(nproc)
 
-    - name: 上传固件
-      uses: actions/upload-artifact@v3
+    - name: 5. 打包固件
+      run: |
+        cd openwrt/bin/targets/x86/64
+        ls
+
+    - name: 6. 上传固件（已修复v4问题）
+      uses: actions/upload-artifact@v4
       with:
-        name: openwrt
-        path: openwrt/bin/targets/
+        name: openwrt-x86
+        path: openwrt/bin/targets/x86/64/
