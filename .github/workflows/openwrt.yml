@@ -1,4 +1,4 @@
-name: Build OpenWrt (x86 NAS Optimized)
+name: OpenWrt NAS Ultimate Build
 
 on:
   workflow_dispatch:
@@ -8,67 +8,95 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 1. 拉取官方源码
+    - name: 1. 拉源码
       run: |
         git clone https://github.com/openwrt/openwrt.git
         cd openwrt
 
-    - name: 2. 更新软件源
+    - name: 2. 添加第三方源（关键）
+      run: |
+        cd openwrt
+
+        # OpenClash
+        git clone https://github.com/vernesong/OpenClash.git package/OpenClash
+
+        # Passwall（备用）
+        git clone https://github.com/xiaorouji/openwrt-passwall.git package/passwall
+
+    - name: 3. 更新 feeds
       run: |
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: 3. 写入配置（NAS专用）
+    - name: 4. 写入 NAS 专用配置（核心优化）
       run: |
         cd openwrt
 
-        # 架构
-        echo "CONFIG_TARGET_x86=y" >> .config
-        echo "CONFIG_TARGET_x86_64=y" >> .config
+        cat >> .config <<EOF
 
-        # Web界面
-        echo "CONFIG_PACKAGE_luci=y" >> .config
+# 架构
+CONFIG_TARGET_x86=y
+CONFIG_TARGET_x86_64=y
 
-        # OpenClash依赖
-        echo "CONFIG_PACKAGE_kmod-tun=y" >> .config
-        echo "CONFIG_PACKAGE_ipset=y" >> .config
+# 镜像格式（关键！）
+CONFIG_TARGET_IMAGES_GZIP=y
+CONFIG_TARGET_IMAGES_QCOW2=y
 
-        # DNS + 去广告
-        echo "CONFIG_PACKAGE_luci-app-adguardhome=y" >> .config
+# LuCI
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-ssl-openssl=y
 
-        # 家长控制
-        echo "CONFIG_PACKAGE_luci-app-access-control=y" >> .config
+# 修改默认IP
+CONFIG_PACKAGE_base-files=y
 
-        # 流控（防卡）
-        echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
+# OpenClash依赖
+CONFIG_PACKAGE_kmod-tun=y
+CONFIG_PACKAGE_ipset=y
+CONFIG_PACKAGE_luci-app-openclash=y
 
-        # 流量监控
-        echo "CONFIG_PACKAGE_luci-app-nlbwmon=y" >> .config
+# DNS + 广告拦截（推荐）
+CONFIG_PACKAGE_luci-app-adguardhome=y
 
-        # 入侵检测
-        echo "CONFIG_PACKAGE_suricata=y" >> .config
+# 家长控制
+CONFIG_PACKAGE_luci-app-access-control=y
 
-        # 网络优化
-        echo "CONFIG_PACKAGE_luci-app-flowoffload=y" >> .config
+# 流控
+CONFIG_PACKAGE_luci-app-sqm=y
 
-        # IPv6
-        echo "CONFIG_PACKAGE_ipv6helper=y" >> .config
+# 流量统计
+CONFIG_PACKAGE_luci-app-nlbwmon=y
+
+# IPv6
+CONFIG_PACKAGE_ipv6helper=y
+
+# 网络加速
+CONFIG_PACKAGE_luci-app-flowoffload=y
+
+# Docker代理支持
+CONFIG_PACKAGE_iptables-mod-tproxy=y
+
+# SSH
+CONFIG_PACKAGE_openssh-sftp-server=y
+
+EOF
 
         make defconfig
 
-    - name: 4. 开始编译（时间较长）
+    - name: 5. 修改默认IP（最关键一步）
+      run: |
+        cd openwrt
+
+        sed -i 's/192.168.1.1/10.110.10.4/g' package/base-files/files/bin/config_generate
+        sed -i 's/root/admin/g' package/base-files/files/etc/shadow
+
+    - name: 6. 编译
       run: |
         cd openwrt
         make -j$(nproc)
 
-    - name: 5. 打包固件
-      run: |
-        cd openwrt/bin/targets/x86/64
-        ls
-
-    - name: 6. 上传固件（已修复v4问题）
+    - name: 7. 上传固件
       uses: actions/upload-artifact@v4
       with:
-        name: openwrt-x86
+        name: openwrt-nas
         path: openwrt/bin/targets/x86/64/
