@@ -1,0 +1,58 @@
+name: Build OpenWrt (Official)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 拉取源码
+      run: |
+        git clone https://github.com/openwrt/openwrt.git
+        cd openwrt
+
+    - name: 更新软件源
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: 写入配置（关键）
+      run: |
+        cd openwrt
+        echo "CONFIG_TARGET_x86=y" >> .config
+        echo "CONFIG_TARGET_x86_64=y" >> .config
+
+        # Web界面
+        echo "CONFIG_PACKAGE_luci=y" >> .config
+
+        # OpenClash依赖
+        echo "CONFIG_PACKAGE_kmod-tun=y" >> .config
+        echo "CONFIG_PACKAGE_ipset=y" >> .config
+
+        # AdGuard
+        echo "CONFIG_PACKAGE_luci-app-adguardhome=y" >> .config
+
+        # 家长控制
+        echo "CONFIG_PACKAGE_luci-app-access-control=y" >> .config
+
+        # SQM
+        echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
+
+        # 流量监控
+        echo "CONFIG_PACKAGE_luci-app-nlbwmon=y" >> .config
+
+        make defconfig
+
+    - name: 编译（耐心等）
+      run: |
+        cd openwrt
+        make -j$(nproc)
+
+    - name: 上传固件
+      uses: actions/upload-artifact@v3
+      with:
+        name: openwrt
+        path: openwrt/bin/targets/
